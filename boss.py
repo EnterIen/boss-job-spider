@@ -1,16 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-Created on 2022-10-20 04:36:10
-@author: Zer-hex
+Created on 2023-12-18
+@author: Miruko
+@email:  someone.miruko@gmail.com
 """
-import json
+import datetime
 from time import sleep
 import pandas as pd
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 import undetected_chromedriver as uc
 from config import *
+
 
 def main():
     login()
@@ -18,27 +18,40 @@ def main():
     for search_url in search_lists:
         get_jobs_lists(*search_url)
 
+
 def login():
     browser.get('https://login.zhipin.com/')
-    print("[+] 你有15秒的时间扫码登录boss制直聘")
+    print("[+] 你有15秒的时间扫码登录boss直聘")
     sleep(15)
     browser.refresh()
+
 
 def get_search_lists():
     urls = []
     for job in jobs:
         for city_code in citys:
-            url = f'https://www.zhipin.com/web/geek/job?query={job}&city={city_code}&experience={experience}&degree={degree}'
-            urls.append((url, f"{citys[city_code]}_{job}.xlsx"))
+            url = f'https://www.zhipin.com/web/geek/job?query={job}&city={city_code}&salary={salary}&experience={experience}&position={position}&jobType={jobType}'
+            now = datetime.datetime.now()
+            time = now.strftime("%H%M%S")
+            urls.append((url, f"{citys[city_code]}_{job}_{time}.xlsx"))
     return urls
+
+
 def get_jobs_lists(search_url, name):
     browser.get(search_url)
     sleep(2)
-    browser.execute_script("window.scrollTo(0, document.body.scrollHeight)");   # 滚到底端
-    sleep(1)
-    page_num_tags = browser.find_elements(By.XPATH, '//*[@id="wrap"]/div[2]/div[2]/div/div[1]/div[1]/div/div/div/a')
-    page_num = int(page_num_tags[-2].text)
+    browser.execute_script("window.scrollTo(0, document.body.scrollHeight)")   # 滚到底端
+    sleep(2)
+    page_num_tags = browser.find_elements(By.XPATH, '//*[@id="wrap"]/div[2]/div[2]/div/div[1]/div[2]/div/div/div/a')
+    print(f"[+] 捕获页码标签,长度: {len(page_num_tags)}")
+    if len(page_num_tags) > 3:
+        page_num = int(page_num_tags[-2].text)
+    else:
+        page_num = 1
     print(f"[+] 信息共{page_num}页, Url: {search_url}")
+
+    existing_companies = set()     # 创建一个集合来存储已处理的公司名
+
     for page in range(page_num):
         print(f"[+] 正在爬取第{page+1}页.")
         url = f"{search_url}&page={page+1}"
@@ -56,7 +69,13 @@ def get_jobs_lists(search_url, name):
             '所属行业': [],
             '位置': [],
         }
-        for li in lis:
+        for index, li in enumerate(lis):
+            company_name = li.find_element(By.CLASS_NAME, 'company-name').text
+            if company_name in existing_companies:
+                continue   # 如果公司名已存在于集合中，则跳过这个职位
+
+            existing_companies.add(company_name)  # 将当前公司加入到集合中
+
             job_name = li.find_element(By.CLASS_NAME, 'job-name').text
             salary = li.find_element(By.CLASS_NAME, 'salary').text
             addr = li.find_element(By.CLASS_NAME, 'job-area').text
@@ -66,7 +85,7 @@ def get_jobs_lists(search_url, name):
             experience = tag_list1[0].text
             degree = tag_list1[1].text
             excess = ', '.join([x.text for x in tag_list2])
-            company_name = li.find_element(By.CLASS_NAME, 'company-name').text
+
             industry = li.find_element(By.CLASS_NAME, 'company-tag-list').find_elements(By.TAG_NAME, 'li')[0].text
             welfare = li.find_element(By.CLASS_NAME, 'info-desc').text
 
@@ -81,6 +100,7 @@ def get_jobs_lists(search_url, name):
             info['所属行业'].append(industry)
             info['位置'].append(addr)
         save_data(name, pd.DataFrame(info))
+
 
 def save_data(name: str, new_data: dict):
     try:
@@ -100,6 +120,7 @@ def save_data(name: str, new_data: dict):
         })
     save = pd.concat([data, new_data], axis=0)
     save.to_excel(name, index=False)
+
 
 if __name__ == '__main__':
     options = uc.ChromeOptions()  # 创建Chrome参数对象
